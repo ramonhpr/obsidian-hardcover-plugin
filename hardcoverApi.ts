@@ -17,6 +17,7 @@ export interface HardcoverUser {
 }
 
 export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
+    const query = `query GetMe { me { id username } }`;
     const response = await requestUrl({
         url: 'https://api.hardcover.app/v1/graphql',
         method: 'POST',
@@ -25,8 +26,9 @@ export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            query: `query { me { id username } }`,
-            operationName: null
+            query,
+            variables: {},
+            operationName: 'GetMe'
         })
     });
     if (response.status !== 200) throw new Error('Failed to fetch user info');
@@ -34,6 +36,8 @@ export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
 }
 
 export async function fetchBooks(apiKey: string, userId: string): Promise<{ data: { books: HardcoverBook[] } }> {
+    const query = `query BooksByUser($userId: Int!) { books(where: {user_books: {user_id: {_eq: $userId}}}) { image { url } pages title } }`;
+    const variables = { userId: Number(userId) };
     const response = await requestUrl({
         url: 'https://api.hardcover.app/v1/graphql',
         method: 'POST',
@@ -42,8 +46,9 @@ export async function fetchBooks(apiKey: string, userId: string): Promise<{ data
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            query: `query MyQuery { books(where: {user_books: {user_id: {_eq: ${userId}}}}) { image { url } pages title } }`,
-            operationName: 'MyQuery'
+            query,
+            variables,
+            operationName: 'BooksByUser'
         })
     });
     if (response.status !== 200) throw new Error('Failed to fetch books');
