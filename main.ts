@@ -46,7 +46,6 @@ export default class HardcoverPlugin extends Plugin {
                     // Fetch books for the user
                     const response = await fetchBooks(this.settings.hardcoverApiKey, user.id);
                     const books = response.data.books;
-                    console.log(books);
                     new Notice(`Fetched ${books.length} books from Hardcover.`);
 
                     // Prepare paths
