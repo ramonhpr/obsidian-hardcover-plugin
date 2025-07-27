@@ -5,9 +5,9 @@ import { requestUrl } from 'obsidian';
 export interface HardcoverBook {
     id: string;
     title: string;
-    author: string;
     image: { url: string };
     pages: number;
+    contributions: { author: { name: string } }[];
     // Add more fields as needed
 }
 
@@ -36,7 +36,7 @@ export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
 }
 
 export async function fetchBooks(apiKey: string, userId: string): Promise<{ data: { books: HardcoverBook[] } }> {
-    const query = `query BooksByUser($userId: Int!) { books(where: {user_books: {user_id: {_eq: $userId}}}) { image { url } pages title } }`;
+    const query = `query BooksByUser($userId: Int!) { books(where: {user_books: {user_id: {_eq: $userId}}}) { image { url } pages title contributions { author { name } } } }`;
     const variables = { userId: Number(userId) };
     const response = await requestUrl({
         url: 'https://api.hardcover.app/v1/graphql',

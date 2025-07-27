@@ -50,7 +50,8 @@ export default class HardcoverPlugin extends Plugin {
                     if (activeView && books.length > 0) {
                         const editor = activeView.editor;
                         books.forEach(book => {
-                            const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nPages: ${book.pages}\n\n`;
+                            const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
+                            const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nAuthor: [[${author}]]\nPages: ${book.pages}\n\n`;
                             editor.replaceSelection(bookInfo);
                         });
                     }
