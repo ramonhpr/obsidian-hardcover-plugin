@@ -6,11 +6,13 @@ import { fetchBooks, createReviewPost, fetchUserInfo } from './hardcoverApi';
 interface HardcoverPluginSettings {
     hardcoverApiKey: string;
     bookshelfFilePath?: string;
+    bookNotesFolder?: string;
 }
 
 const DEFAULT_SETTINGS: HardcoverPluginSettings = {
     hardcoverApiKey: '',
-    bookshelfFilePath: 'bookshelf/index'
+    bookshelfFilePath: 'bookshelf/index',
+    bookNotesFolder: 'bookshelf/books'
 }
 
 export default class HardcoverPlugin extends Plugin {
@@ -47,12 +49,18 @@ export default class HardcoverPlugin extends Plugin {
                     console.log(books);
                     new Notice(`Fetched ${books.length} books from Hardcover.`);
 
-                    // Determine file path from settings or use default
+                    // Prepare paths
                     const filePath = this.settings.bookshelfFilePath?.trim() || 'bookshelf/index';
                     const normalizedPath = normalizePath(filePath + '.md');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                     if (folderPath && !this.app.vault.getAbstractFileByPath(folderPath)) {
                         await this.app.vault.createFolder(folderPath);
+                    }
+                    // Book notes folder
+                    const bookNotesFolder = this.settings.bookNotesFolder?.trim() || 'bookshelf/books';
+                    const bookNotesFolderPath = normalizePath(bookNotesFolder);
+                    if (bookNotesFolderPath && !this.app.vault.getAbstractFileByPath(bookNotesFolderPath)) {
+                        await this.app.vault.createFolder(bookNotesFolderPath);
                     }
                     let file = this.app.vault.getAbstractFileByPath(normalizedPath);
                     if (!file) {
@@ -64,13 +72,23 @@ export default class HardcoverPlugin extends Plugin {
                         // Only add books that are not already in the file
                         const existingContent = await this.app.vault.read(file);
                         let newRows = '';
-                        books.forEach(book => {
+                        for (const book of books) {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
                             const bookIdTag = `<!-- hardcover-id:${book.id} -->`;
-                            if (!existingContent.includes(bookIdTag)) {
-                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | **${book.title}** | [[${author}]] | ${book.pages} ${bookIdTag} |\n`;
+                            // Book note path
+                            const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
+                            const bookNotePath = `${bookNotesFolderPath}/${bookNoteName}.md`;
+                            // Create book note if not exists
+                            let bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
+                            if (!bookNote) {
+                                const bookNoteContent = `---\nauthor: "[[${author}]]"\npages: ${book.pages}\n---\n\n# ${book.title}\n`;
+                                await this.app.vault.create(bookNotePath, bookNoteContent);
+                                bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
                             }
-                        });
+                            if (!existingContent.includes(bookIdTag)) {
+                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} ${bookIdTag} |\n`;
+                            }
+                        }
                         // Table header
                         const tableHeader = `| Cover | Title | Author | Pages |\n|:-----:|:------|:-------|:------:|\n`;
                         let newContent = existingContent;
@@ -157,6 +175,17 @@ class HardcoverSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.bookshelfFilePath || 'bookshelf/index')
                 .onChange(async (value) => {
                     this.plugin.settings.bookshelfFilePath = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Books Notes Folder')
+            .setDesc('Enter the folder for book notes. Default: bookshelf/books')
+            .addText(text => text
+                .setPlaceholder('bookshelf/books')
+                .setValue(this.plugin.settings.bookNotesFolder || 'bookshelf/books')
+                .onChange(async (value) => {
+                    this.plugin.settings.bookNotesFolder = value;
                     await this.plugin.saveSettings();
                 }));
     }
