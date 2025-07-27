@@ -78,19 +78,39 @@ export default class HardcoverPlugin extends Plugin {
                             // Book note path
                             const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
                             const bookNotePath = `${bookNotesFolderPath}/${bookNoteName}.md`;
+                            // Get book status
+                            const status = book.user_books && book.user_books.length > 0 && book.user_books[0].user_book_status ? book.user_books[0].user_book_status.status : 'Unknown';
                             // Create book note if not exists
                             let bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
+                            const bookNoteFrontmatter = `---\nauthor: "[[${author}]]"\npages: ${book.pages}\nstatus: ${status}\n---\n\n# ${book.title}\n`;
                             if (!bookNote) {
-                                const bookNoteContent = `---\nauthor: "[[${author}]]"\npages: ${book.pages}\n---\n\n# ${book.title}\n`;
-                                await this.app.vault.create(bookNotePath, bookNoteContent);
+                                await this.app.vault.create(bookNotePath, bookNoteFrontmatter);
                                 bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
+                            } else if (bookNote instanceof TFile) {
+                                // Update frontmatter if note exists
+                                let noteContent = await this.app.vault.read(bookNote);
+                                // Replace or insert frontmatter
+                                let restContent = '';
+                                if (noteContent.startsWith('---')) {
+                                    // Replace existing frontmatter
+                                    const fmEnd = noteContent.indexOf('---', 3);
+                                    if (fmEnd !== -1) {
+                                        restContent = noteContent.substring(fmEnd + 3).replace(/^\n+/, '');
+                                    }
+                                } else {
+                                    restContent = noteContent;
+                                }
+                                // Remove duplicate heading if present
+                                restContent = restContent.replace(new RegExp(`^# ${book.title}\\s*`, 'm'), '');
+                                noteContent = bookNoteFrontmatter + restContent;
+                                await this.app.vault.modify(bookNote, noteContent);
                             }
                             if (!existingContent.includes(bookIdTag)) {
-                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} ${bookIdTag} |\n`;
+                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} | ${status} ${bookIdTag} |\n`;
                             }
                         }
                         // Table header
-                        const tableHeader = `| Cover | Title | Author | Pages |\n|:-----:|:------|:-------|:------:|\n`;
+                        const tableHeader = `| Cover | Title | Author | Pages | Status |\n|:-----:|:------|:-------|:------:|:------:|\n`;
                         let newContent = existingContent;
                         if (!existingContent.includes('| Cover | Title | Author | Pages |')) {
                             // Table does not exist, create it
