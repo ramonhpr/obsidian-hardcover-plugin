@@ -1,14 +1,16 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
 import { fetchBooks, createReviewPost, fetchUserInfo } from './hardcoverApi';
 
 // Remember to rename these classes and interfaces!
 
 interface HardcoverPluginSettings {
     hardcoverApiKey: string;
+    bookshelfFilePath?: string;
 }
 
 const DEFAULT_SETTINGS: HardcoverPluginSettings = {
-    hardcoverApiKey: ''
+    hardcoverApiKey: '',
+    bookshelfFilePath: 'bookshelf/index'
 }
 
 export default class HardcoverPlugin extends Plugin {
@@ -45,15 +47,27 @@ export default class HardcoverPlugin extends Plugin {
                     console.log(books);
                     new Notice(`Fetched ${books.length} books from Hardcover.`);
 
-                    // Insert book info into the current note
-                    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-                    if (activeView && books.length > 0) {
-                        const editor = activeView.editor;
+                    // Determine file path from settings or use default
+                    const filePath = this.settings.bookshelfFilePath?.trim() || 'bookshelf/index';
+                    const normalizedPath = normalizePath(filePath + '.md');
+                    const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
+                    if (folderPath && !this.app.vault.getAbstractFileByPath(folderPath)) {
+                        await this.app.vault.createFolder(folderPath);
+                    }
+                    let file = this.app.vault.getAbstractFileByPath(normalizedPath);
+                    if (!file) {
+                        // Create the file if it doesn't exist
+                        await this.app.vault.create(normalizedPath, '');
+                        file = this.app.vault.getAbstractFileByPath(normalizedPath);
+                    }
+                    if (file && file instanceof TFile) {
+                        let content = await this.app.vault.read(file);
                         books.forEach(book => {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
                             const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nAuthor: [[${author}]]\nPages: ${book.pages}\n\n`;
-                            editor.replaceSelection(bookInfo);
+                            content += bookInfo;
                         });
+                        await this.app.vault.modify(file, content);
                     }
                 } catch (e) {
                     console.error(e);
@@ -109,6 +123,17 @@ class HardcoverSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.hardcoverApiKey)
                 .onChange(async (value) => {
                     this.plugin.settings.hardcoverApiKey = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName('Bookshelf File Path')
+            .setDesc('Enter the path for your bookshelf file (without .md). Default: bookshelf/index')
+            .addText(text => text
+                .setPlaceholder('bookshelf/index')
+                .setValue(this.plugin.settings.bookshelfFilePath || 'bookshelf/index')
+                .onChange(async (value) => {
+                    this.plugin.settings.bookshelfFilePath = value;
                     await this.plugin.saveSettings();
                 }));
     }
