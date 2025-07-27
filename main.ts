@@ -61,13 +61,22 @@ export default class HardcoverPlugin extends Plugin {
                         file = this.app.vault.getAbstractFileByPath(normalizedPath);
                     }
                     if (file && file instanceof TFile) {
-                        let content = await this.app.vault.read(file);
+                        let content = '';
+                        // Only add books that are not already in the file
+                        const existingContent = await this.app.vault.read(file);
                         books.forEach(book => {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
-                            const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nAuthor: [[${author}]]\nPages: ${book.pages}\n\n`;
-                            content += bookInfo;
+                            const bookIdTag = `<!-- hardcover-id:${book.id} -->`;
+                            if (!existingContent.includes(bookIdTag)) {
+                                const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nAuthor: [[${author}]]\nPages: ${book.pages}\n${bookIdTag}\n\n`;
+                                content += bookInfo;
+                            }
                         });
-                        await this.app.vault.modify(file, content);
+                        if (content) {
+                            await this.app.vault.modify(file, existingContent + content);
+                        } else {
+                            new Notice('No new books to add.');
+                        }
                     }
                 } catch (e) {
                     console.error(e);
