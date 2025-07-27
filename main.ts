@@ -61,19 +61,33 @@ export default class HardcoverPlugin extends Plugin {
                         file = this.app.vault.getAbstractFileByPath(normalizedPath);
                     }
                     if (file && file instanceof TFile) {
-                        let content = '';
                         // Only add books that are not already in the file
                         const existingContent = await this.app.vault.read(file);
+                        let newRows = '';
                         books.forEach(book => {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
                             const bookIdTag = `<!-- hardcover-id:${book.id} -->`;
                             if (!existingContent.includes(bookIdTag)) {
-                                const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nAuthor: [[${author}]]\nPages: ${book.pages}\n${bookIdTag}\n\n`;
-                                content += bookInfo;
+                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | **${book.title}** | [[${author}]] | ${book.pages} ${bookIdTag} |\n`;
                             }
                         });
-                        if (content) {
-                            await this.app.vault.modify(file, existingContent + content);
+                        // Table header
+                        const tableHeader = `| Cover | Title | Author | Pages |\n|:-----:|:------|:-------|:------:|\n`;
+                        let newContent = existingContent;
+                        if (!existingContent.includes('| Cover | Title | Author | Pages |')) {
+                            // Table does not exist, create it
+                            newContent += tableHeader + newRows;
+                        } else if (newRows) {
+                            // Table exists, append new rows just after the header
+                            const lines = existingContent.split('\n');
+                            const headerIdx = lines.findIndex(line => line.includes('| Cover | Title | Author | Pages |'));
+                            const dividerIdx = headerIdx + 1;
+                            // Insert after divider
+                            lines.splice(dividerIdx + 1, 0, newRows.trim());
+                            newContent = lines.join('\n');
+                        }
+                        if (newRows) {
+                            await this.app.vault.modify(file, newContent);
                         } else {
                             new Notice('No new books to add.');
                         }
