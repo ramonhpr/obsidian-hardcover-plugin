@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-import { fetchBooks, createReviewPost } from './hardcoverApi';
+import { fetchBooks, createReviewPost, fetchUserInfo } from './hardcoverApi';
 
 // Remember to rename these classes and interfaces!
 
@@ -33,9 +33,29 @@ export default class HardcoverPlugin extends Plugin {
             name: 'Query Hardcover Book Collection',
             callback: async () => {
                 try {
-                    const books = await fetchBooks(this.settings.hardcoverApiKey);
+                    // Fetch user info first
+                    const user = await fetchUserInfo(this.settings.hardcoverApiKey);
+                    if (!user?.id) {
+                        new Notice('Could not fetch user info from Hardcover.');
+                        return;
+                    }
+                    // Fetch books for the user
+                    const response = await fetchBooks(this.settings.hardcoverApiKey, user.id);
+                    const books = response.data.books;
+                    console.log(books);
                     new Notice(`Fetched ${books.length} books from Hardcover.`);
+
+                    // Insert book info into the current note
+                    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+                    if (activeView && books.length > 0) {
+                        const editor = activeView.editor;
+                        books.forEach(book => {
+                            const bookInfo = `![${book.title}](${book.image.url})\n**${book.title}**\nPages: ${book.pages}\n\n`;
+                            editor.replaceSelection(bookInfo);
+                        });
+                    }
                 } catch (e) {
+                    console.error(e);
                     new Notice('Failed to fetch books from Hardcover.');
                 }
             }

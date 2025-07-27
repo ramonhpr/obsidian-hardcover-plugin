@@ -6,11 +6,17 @@ export interface HardcoverBook {
     id: string;
     title: string;
     author: string;
+    image: { url: string };
+    pages: number;
     // Add more fields as needed
 }
 
-export async function fetchBooks(apiKey: string): Promise<HardcoverBook[]> {
-    // Use Obsidian's requestUrl to bypass CORS
+export interface HardcoverUser {
+    id: string;
+    username: string;
+}
+
+export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
     const response = await requestUrl({
         url: 'https://api.hardcover.app/v1/graphql',
         method: 'POST',
@@ -18,15 +24,34 @@ export async function fetchBooks(apiKey: string): Promise<HardcoverBook[]> {
             'Authorization': `${apiKey}`,
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({"query":"query MyQuery {\n  books(where: {user_books: {user_id: {_eq: ID}}}) {\n    image {\n        url\n      }\n      pages\n      title\n  }\n}\n","operationName":"MyQuery"})
+        body: JSON.stringify({
+            query: `query { me { id username } }`,
+            operationName: null
+        })
+    });
+    if (response.status !== 200) throw new Error('Failed to fetch user info');
+    return response.json.data.me[0];
+}
+
+export async function fetchBooks(apiKey: string, userId: string): Promise<{ data: { books: HardcoverBook[] } }> {
+    const response = await requestUrl({
+        url: 'https://api.hardcover.app/v1/graphql',
+        method: 'POST',
+        headers: {
+            'Authorization': `${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            query: `query MyQuery { books(where: {user_books: {user_id: {_eq: ${userId}}}}) { image { url } pages title } }`,
+            operationName: 'MyQuery'
+        })
     });
     if (response.status !== 200) throw new Error('Failed to fetch books');
     return response.json;
 }
 
-export async function createReviewPost(apiKey: string, bookId: string, content: string): Promise<any> {
+export async function createReviewPost(apiKey: string, bookId: string, content: string): Promise<{ success: boolean; reviewId?: string }> {
     // Use Obsidian's requestUrl to bypass CORS
-    const x ='x';
 	const response = await requestUrl({
         url: `https://api.hardcover.app/v1/books/${bookId}/reviews`,
         method: 'POST',
