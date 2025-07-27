@@ -36,6 +36,21 @@ This is an unofficial plugin for Obsidian that integrates with [Hardcover](https
 - Written in TypeScript and uses the latest Obsidian API.
 - See `main.ts` and `hardcoverApi.ts` for implementation details.
 
+## Future Work
+
+The following features are planned or suggested for future releases:
+
+- Allow sorting and filtering of the index table by title, author, status, or other fields.
+- Allow sending reviews directly to Hardcover from within Obsidian.
+- Add support for syncing highlights and notes from Hardcover to Obsidian book notes.
+- Enable updating book status (e.g., mark as read, currently reading) directly from Obsidian.
+- Add support for custom table columns and user-defined metadata fields.
+- Provide a command to refresh or re-sync the collection on a schedule.
+- Add integration with other book-related plugins or APIs (e.g., Goodreads, Open Library).
+- Support for bulk editing or tagging books within the index table.
+- Add a dashboard view for reading statistics and progress tracking.
+- Improve error handling and user feedback for API/network issues.
+
 ---
 
 For more information about Hardcover, visit [https://hardcover.app](https://hardcover.app).
