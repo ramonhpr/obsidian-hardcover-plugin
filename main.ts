@@ -68,30 +68,38 @@ export default class HardcoverPlugin extends Plugin {
                         file = this.app.vault.getAbstractFileByPath(normalizedPath);
                     }
                     if (file && file instanceof TFile) {
-                        // Only add books that are not already in the file
+                        // Read existing content and split into lines
                         const existingContent = await this.app.vault.read(file);
-                        let newRows = '';
+                        const lines = existingContent.split('\n');
+                        const tableHeader = `| Cover | Title | Author | Pages | Status |`;
+                        const divider = `|:-----:|:------|:-------|:------:|:------:|`;
+                        let headerIdx = lines.findIndex(line => line.includes(tableHeader));
+                        let dividerIdx = lines.findIndex(line => line.includes(divider));
+                        // If table doesn't exist, create it
+                        // Remove all header/divider and book rows, keep only non-table content
+                        const nonTableLines = lines.filter(line =>
+                            !line.includes(tableHeader) &&
+                            !line.includes(divider) &&
+                            !line.includes('<!-- hardcover-id:')
+                        );
+                        // Prepare book rows
+                        const bookRows = [];
                         for (const book of books) {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
                             const bookIdTag = `<!-- hardcover-id:${book.id} -->`;
-                            // Book note path
                             const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
                             const bookNotePath = `${bookNotesFolderPath}/${bookNoteName}.md`;
-                            // Get book status
                             const status = book.user_books && book.user_books.length > 0 && book.user_books[0].user_book_status ? book.user_books[0].user_book_status.status : 'Unknown';
-                            // Create book note if not exists
+                            // Create or update book note
                             let bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
                             const bookNoteFrontmatter = `---\nauthor: "[[${author}]]"\npages: ${book.pages}\nstatus: ${status}\n---\n\n# ${book.title}\n`;
                             if (!bookNote) {
                                 await this.app.vault.create(bookNotePath, bookNoteFrontmatter);
                                 bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
                             } else if (bookNote instanceof TFile) {
-                                // Update frontmatter if note exists
                                 let noteContent = await this.app.vault.read(bookNote);
-                                // Replace or insert frontmatter
                                 let restContent = '';
                                 if (noteContent.startsWith('---')) {
-                                    // Replace existing frontmatter
                                     const fmEnd = noteContent.indexOf('---', 3);
                                     if (fmEnd !== -1) {
                                         restContent = noteContent.substring(fmEnd + 3).replace(/^\n+/, '');
@@ -99,35 +107,17 @@ export default class HardcoverPlugin extends Plugin {
                                 } else {
                                     restContent = noteContent;
                                 }
-                                // Remove duplicate heading if present
                                 restContent = restContent.replace(new RegExp(`^# ${book.title}\\s*`, 'm'), '');
                                 noteContent = bookNoteFrontmatter + restContent;
                                 await this.app.vault.modify(bookNote, noteContent);
                             }
-                            if (!existingContent.includes(bookIdTag)) {
-                                newRows += `| <img src=\"${book.image.url}\" alt=\"${book.title}\" width=\"120\" height=\"180\" style=\"object-fit:cover;\" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} | ${status} ${bookIdTag} |\n`;
-                            }
+                            bookRows.push(`| <img src="${book.image.url}" alt="${book.title}" width="120" height="180" style="object-fit:cover;" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} | ${status} ${bookIdTag} |`);
                         }
-                        // Table header
-                        const tableHeader = `| Cover | Title | Author | Pages | Status |\n|:-----:|:------|:-------|:------:|:------:|\n`;
-                        let newContent = existingContent;
-                        if (!existingContent.includes('| Cover | Title | Author | Pages |')) {
-                            // Table does not exist, create it
-                            newContent += tableHeader + newRows;
-                        } else if (newRows) {
-                            // Table exists, append new rows just after the header
-                            const lines = existingContent.split('\n');
-                            const headerIdx = lines.findIndex(line => line.includes('| Cover | Title | Author | Pages |'));
-                            const dividerIdx = headerIdx + 1;
-                            // Insert after divider
-                            lines.splice(dividerIdx + 1, 0, newRows.trim());
-                            newContent = lines.join('\n');
-                        }
-                        if (newRows) {
-                            await this.app.vault.modify(file, newContent);
-                        } else {
-                            new Notice('No new books to add.');
-                        }
+                        // Compose new table section
+                        const tableSection = [tableHeader, divider, ...bookRows];
+                        // Write table at the top, followed by any non-table content
+                        const newContent = [...tableSection, ...nonTableLines].join('\n');
+                        await this.app.vault.modify(file, newContent);
                     }
                 } catch (e) {
                     console.error(e);
