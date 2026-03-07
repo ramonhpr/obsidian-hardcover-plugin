@@ -50,7 +50,7 @@ export default class HardcoverPlugin extends Plugin {
 
                     // Prepare paths
                     const filePath = this.settings.bookshelfFilePath?.trim() || 'bookshelf/index';
-                    const normalizedPath = normalizePath(filePath + '.md');
+                    const normalizedPath = normalizePath(filePath + '.base');
                     const folderPath = normalizedPath.substring(0, normalizedPath.lastIndexOf('/'));
                     if (folderPath && !this.app.vault.getAbstractFileByPath(folderPath)) {
                         await this.app.vault.createFolder(folderPath);
@@ -69,58 +69,63 @@ export default class HardcoverPlugin extends Plugin {
                     }
                     if (file && file instanceof TFile) {
                         // Create Obsidian Bases file with proper structure
-                        // This will contain book records with typed properties
+                        // .base files contain only the YAML configuration
+                        
+                        // Build the base content with Bases syntax
+                        const baseContent = `filters:
+  and:
+    - file.inFolder("${bookNotesFolderPath}")
+formulas:
+  readingProgress: if(pages, (progress / pages * 100).round(1) + "%")
+  "": image(cover)
+  cover: image(cover)
+properties:
+  title:
+    displayName: Title
+  author:
+    displayName: Author
+  pages:
+    displayName: Pages
+  status:
+    displayName: Status
+  cover:
+    displayName: Cover
+  formula.readingProgress:
+    displayName: Progress
+views:
+  - type: table
+    name: All Books
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - author
+      - pages
+      - status
+      - formula.
+      - formula.readingProgress
+    sort:
+      - property: cover
+        direction: DESC
+      - property: file.name
+        direction: DESC
+    limit: 100
+    rowHeight: extra
+  - type: cards
+    name: View
+    order:
+      - file.name
+    cardSize: 210
+    image: note.cover
+    imageAspectRatio: 1.7
+`;
                         
                         // Sort books by title
                         const sortedBooks = books.sort((a, b) => 
                             a.title.localeCompare(b.title)
                         );
                         
-                        // Build the base content with Bases syntax
-                        let baseContent = `# Hardcover Bookshelf
-
-## Configuration
-
-\`\`\`yaml
-filters:
-  and:
-    - file.inFolder("${bookNotesFolderPath}")
-formulas:
-  readingProgress: 'if(pages, (progress / pages * 100).round(1) + "%")'
-properties:
-  title:
-    displayName: "Title"
-  author:
-    displayName: "Author"
-  pages:
-    displayName: "Pages"
-  status:
-    displayName: "Status"
-  cover:
-    displayName: "Cover"
-  formula.readingProgress:
-    displayName: "Progress"
-views:
-  - type: table
-    name: "All Books"
-    limit: 100
-    order:
-      - file.name
-      - note.author
-      - note.pages
-      - note.status
-    groupBy:
-      property: note.status
-      direction: DESC
-\`\`\`
-
-## All Books
-
-| Title | Author | Pages | Status |
-|:------|:-------|:------:|:------:|
-`;
-                        
-                        // Add book rows
                         for (const book of sortedBooks) {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
                             const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
@@ -167,9 +172,6 @@ hardcover_id: ${book.id}
                                 noteContent = bookNoteFrontmatter + restContent;
                                 await this.app.vault.modify(bookNote, noteContent);
                             }
-                            
-                            // Add row to table
-                            baseContent += `| [[${bookNoteName}]] | ${author} | ${book.pages || 0} | ${status} |\n`;
                         }
                         
                         await this.app.vault.modify(file, baseContent);
