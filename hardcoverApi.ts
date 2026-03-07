@@ -39,7 +39,7 @@ export async function fetchUserInfo(apiKey: string): Promise<HardcoverUser> {
 export async function fetchBooks(apiKey: string, userId: string): Promise<{ data: { books: HardcoverBook[] } }> {
     const query = `
 	  query BooksByUser($userId: Int!) {
-		books(where: {user_books: {user_id: {_eq: $userId}}}) {
+		books(where: {user_books: {user_id: {_eq: $userId}}}, order_by: {title: desc}) {
 		  image { url }
 		  id
 		  pages

@@ -1,8 +1,25 @@
 /*
-
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
-
-If your plugin does not need CSS, delete this file.
-
+Styles for the Hardcover plugin table
 */
+
+.hardcover-table-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.hardcover-table-header:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.hardcover-sort-indicator {
+    display: inline-block;
+    margin-left: 5px;
+}
+
+.hardcover-sort-indicator.asc::after {
+    content: "↑";
+}
+
+.hardcover-sort-indicator.desc::after {
+    content: "↓";
+}
