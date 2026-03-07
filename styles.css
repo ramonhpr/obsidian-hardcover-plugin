@@ -1,25 +1,4 @@
 /*
-Styles for the Hardcover plugin table
+Hardcover Plugin Styles
 */
 
-.hardcover-table-header {
-    cursor: pointer;
-    user-select: none;
-}
-
-.hardcover-table-header:hover {
-    background-color: var(--background-modifier-hover);
-}
-
-.hardcover-sort-indicator {
-    display: inline-block;
-    margin-left: 5px;
-}
-
-.hardcover-sort-indicator.asc::after {
-    content: "↑";
-}
-
-.hardcover-sort-indicator.desc::after {
-    content: "↓";
-}

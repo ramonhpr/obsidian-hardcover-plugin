@@ -1,7 +1,7 @@
 {
 	"id": "hardcover-obsidian-plugin",
 	"name": "Hardcover Obsidian Plugin",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
 	"description": "Unofficial hardcover obsidian plugin.",
 	"author": "Ramon Ribeiro",

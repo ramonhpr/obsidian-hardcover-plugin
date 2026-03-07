@@ -1,5 +1,5 @@
-import { App, Editor, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
-import { fetchBooks, createReviewPost, fetchUserInfo } from './hardcoverApi';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
+import { fetchBooks, fetchUserInfo } from './hardcoverApi';
 
 // Remember to rename these classes and interfaces!
 
@@ -68,31 +68,87 @@ export default class HardcoverPlugin extends Plugin {
                         file = this.app.vault.getAbstractFileByPath(normalizedPath);
                     }
                     if (file && file instanceof TFile) {
-                        // Read existing content and split into lines
-                        const existingContent = await this.app.vault.read(file);
-                        const lines = existingContent.split('\n');
-                        const tableHeader = `| Cover | Title | Author | Pages | Status |`;
-                        const divider = `|:-----:|:------|:-------|:------:|:------:|`;
-                        let headerIdx = lines.findIndex(line => line.includes(tableHeader));
-                        let dividerIdx = lines.findIndex(line => line.includes(divider));
-                        // If table doesn't exist, create it
-                        // Remove all header/divider and book rows, keep only non-table content
-                        const nonTableLines = lines.filter(line =>
-                            !line.includes(tableHeader) &&
-                            !line.includes(divider) &&
-                            !line.includes('<!-- hardcover-id:')
+                        // Create Obsidian Bases file with proper structure
+                        // This will contain book records with typed properties
+                        
+                        // Sort books by title
+                        const sortedBooks = books.sort((a, b) => 
+                            a.title.localeCompare(b.title)
                         );
-                        // Prepare book rows
-                        const bookRows = [];
-                        for (const book of books) {
+                        
+                        // Build the base content with Bases syntax
+                        let baseContent = `# Hardcover Bookshelf
+
+## Configuration
+
+\`\`\`yaml
+filters:
+  and:
+    - file.inFolder("${bookNotesFolderPath}")
+formulas:
+  readingProgress: 'if(pages, (progress / pages * 100).round(1) + "%")'
+properties:
+  title:
+    displayName: "Title"
+  author:
+    displayName: "Author"
+  pages:
+    displayName: "Pages"
+  status:
+    displayName: "Status"
+  cover:
+    displayName: "Cover"
+  formula.readingProgress:
+    displayName: "Progress"
+views:
+  - type: table
+    name: "All Books"
+    limit: 100
+    order:
+      - file.name
+      - note.author
+      - note.pages
+      - note.status
+    groupBy:
+      property: note.status
+      direction: DESC
+\`\`\`
+
+## All Books
+
+| Title | Author | Pages | Status |
+|:------|:-------|:------:|:------:|
+`;
+                        
+                        // Add book rows
+                        for (const book of sortedBooks) {
                             const author = book.contributions && book.contributions.length > 0 ? book.contributions[0].author.name : 'Unknown Author';
-                            const bookIdTag = `<!-- hardcover-id:${book.id} -->`;
                             const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
                             const bookNotePath = `${bookNotesFolderPath}/${bookNoteName}.md`;
                             const status = book.user_books && book.user_books.length > 0 && book.user_books[0].user_book_status ? book.user_books[0].user_book_status.status : 'Unknown';
-                            // Create or update book note
+                            
+                            // Create or update book note with Obsidian Bases properties
                             let bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
-                            const bookNoteFrontmatter = `---\nauthor: "[[${author}]]"\npages: ${book.pages}\nstatus: ${status}\n---\n\n# ${book.title}\n`;
+                            const bookNoteFrontmatter = `---
+title: "${book.title}"
+author: "${author}"
+pages: ${book.pages || 0}
+status: "${status}"
+cover: "${book.image?.url || ''}"
+progress: 0
+hardcover_id: ${book.id}
+---
+
+# ${book.title}
+
+## Details
+- **Author**: ${author}
+- **Pages**: ${book.pages || 0}
+- **Status**: ${status}
+- **Cover**: ![Cover](${book.image?.url || ''})
+
+## Notes
+`;
                             if (!bookNote) {
                                 await this.app.vault.create(bookNotePath, bookNoteFrontmatter);
                                 bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
@@ -111,13 +167,12 @@ export default class HardcoverPlugin extends Plugin {
                                 noteContent = bookNoteFrontmatter + restContent;
                                 await this.app.vault.modify(bookNote, noteContent);
                             }
-                            bookRows.push(`| <img src="${book.image.url}" alt="${book.title}" width="120" height="180" style="object-fit:cover;" /> | [[${bookNoteName}]] | [[${author}]] | ${book.pages} | ${status} ${bookIdTag} |`);
+                            
+                            // Add row to table
+                            baseContent += `| [[${bookNoteName}]] | ${author} | ${book.pages || 0} | ${status} |\n`;
                         }
-                        // Compose new table section
-                        const tableSection = [tableHeader, divider, ...bookRows];
-                        // Write table at the top, followed by any non-table content
-                        const newContent = [...tableSection, ...nonTableLines].join('\n');
-                        await this.app.vault.modify(file, newContent);
+                        
+                        await this.app.vault.modify(file, baseContent);
                     }
                 } catch (e) {
                     console.error(e);
