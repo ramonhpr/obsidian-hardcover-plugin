@@ -131,6 +131,7 @@ views:
                             const bookNoteName = `${book.title.replace(/[/\\?%*:|"<>]/g, '_')}`;
                             const bookNotePath = `${bookNotesFolderPath}/${bookNoteName}.md`;
                             const status = book.user_books && book.user_books.length > 0 && book.user_books[0].user_book_status ? book.user_books[0].user_book_status.status : 'Unknown';
+                            const progress = book.user_books && book.user_books.length > 0 && book.user_books[0].user_book_reads && book.user_books[0].user_book_reads.length > 0 ? book.user_books[0].user_book_reads[0].progress_pages || 0 : 0;
                             
                             // Create or update book note with Obsidian Bases properties
                             let bookNote = this.app.vault.getAbstractFileByPath(bookNotePath);
@@ -140,7 +141,7 @@ author: "${author}"
 pages: ${book.pages || 0}
 status: "${status}"
 cover: "${book.image?.url || ''}"
-progress: 0
+progress: ${progress}
 hardcover_id: ${book.id}
 ---
 

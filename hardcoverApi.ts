@@ -8,7 +8,10 @@ export interface HardcoverBook {
     image: { url: string };
     pages: number;
     contributions: { author: { name: string } }[];
-    user_books: { user_book_status: { status: string } }[];
+    user_books: { 
+        user_book_status?: { status: string };
+        user_book_reads?: { progress_pages?: number }[];
+    }[];
     // Add more fields as needed
 }
 
@@ -48,6 +51,9 @@ export async function fetchBooks(apiKey: string, userId: string): Promise<{ data
 		  user_books(where: {user: {id: {_eq: $userId}}}) {
 			user_book_status {
 			  status
+			}
+			user_book_reads {
+			  progress_pages
 			}
 		  }
 		}
