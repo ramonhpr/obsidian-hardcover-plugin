@@ -1,50 +1,52 @@
 # Copilot Instructions for Hardcover Obsidian Plugin
 
 ## Project Overview
-This plugin integrates [Hardcover](https://hardcover.app) with Obsidian, allowing users to manage their book collection directly in their vault. It fetches book data from Hardcover, creates/updates index and book notes, and keeps everything in sync.
+This plugin integrates [Hardcover](https://hardcover.app) with Obsidian. It synchronizes your book collection into a **native Obsidian Base (.base)** file and allows syncing reviews directly from Obsidian notes back to Hardcover.
 
-## Architecture & Key Files
-- `main.ts`: Entry point. Registers commands, ribbon icon, status bar, and settings tab. Handles book fetching, note creation/updating, and table generation.
-- `hardcoverApi.ts`: Handles all API communication with Hardcover (GraphQL queries, review posting).
-- `esbuild.config.mjs`: Build script. Use `npm run build` for production or `npm run dev` for development (watches for changes).
-- `package.json`: Defines build/test/version scripts and dependencies.
-- `manifest.json`, `styles.css`: Obsidian plugin metadata and styles.
+## 📂 Modular Architecture
+The project is structured into functional modules under `src/` to ensure maintainability:
 
-## Developer Workflows
-- **Build:**
-  - Development: `npm run dev` (watches and rebuilds on changes)
-  - Production: `npm run build` (type-checks, bundles, minifies)
-- **Version bump:** `npm run version` (updates manifest and versions.json)
-- **No automated tests** are present; manual testing in Obsidian is required.
+- `main.ts`: Entry point. Very lightweight, simply exports the `HardcoverPlugin` class.
+- `src/plugin.ts`: Core orchestration. Registers commands, manages file creation, and bookshelf fetching logic.
+- `src/api/hardcover-api.ts`: Pure API communication using GraphQL. Handles user info, book list fetching, and review posting (Update/Insert).
+- `src/parsers/slate-parser.ts`: **Critical Logic**. Converts Obsidian Markdown (Bold, Italic, Headings h1-h6, Lists, Spoilers) into the SlateJS JSON format required by Hardcover.
+- `src/ui/sync-modal.ts`: Confirmation modal for review syncing (Rating, Spoilers, Privacy).
+- `src/settings/settings-tab.ts`: Management of the plugin settings interface.
+- `src/types/`: Interfaces for Hardcover data, settings, and internal state.
 
-## Patterns & Conventions
-- **Settings:** API key, index file path, and book notes folder are user-configurable via the settings tab.
-- **File/Folder Creation:** All required folders/files are auto-created if missing.
-- **Book Notes:**
-  - Created/updated per book, with YAML frontmatter and H1 title.
-  - Frontmatter and heading are updated if the note exists (no duplication).
-- **Index Table:**
-  - Markdown table in index note, with cover image, title (links to book note), author (wiki link), pages, and status.
-  - Prevents duplicate entries using hidden HTML comments (`<!-- hardcover-id:... -->`).
-- **API Integration:**
-  - Uses Obsidian's `requestUrl` for all network requests.
-  - GraphQL queries for user and book data; REST for review posting.
+## 🚀 Key Features & Patterns
 
-## External Dependencies
-- Relies on Obsidian API and Hardcover API.
-- Uses TypeScript, esbuild, and some Codemirror/Electron modules (externalized in build).
+### 📋 Local Database (.base)
+- The plugin generates a `.base` file (Obsidian's native database view).
+- It uses a YAML configuration that filters notes in the `bookshelf/books` folder.
+- Custom formulas are used for progress calculation.
 
-## Example: Adding a Book
-- Fetches user info and books from Hardcover.
-- For each book:
-  - Creates/updates book note in configured folder.
-  - Updates index table, avoiding duplicates.
+### ✍️ Review Syncing
+- Extracts content from the `## Notes` section of a book note.
+- **Markdown to Slate**: The parser handles complex formatting:
+    - `**Bold**`, `*Italic*`, `_Italic_`.
+    - `# Heading 1` to `###### Heading 6` map to `heading-one` through `heading-six`.
+    - `- List` and `* List` become separate blocks.
+    - `<spoiler>text</spoiler>` tags are preserved as Slate spoiler objects.
+- **Privacy Mode**: Public sync uses `review_slate`; Private sync uses `private_notes`.
 
-## Tips for AI Agents
-- Always check/update both index and book notes for sync.
-- Use settings from `main.ts` and update via the settings tab logic.
-- Follow the file/folder creation logic to avoid errors.
-- Reference `hardcoverApi.ts` for API patterns and error handling.
+### 🗃️ Metadata Persistence
+- Individual book notes (`.md`) store critical sync data in frontmatter:
+    - `hardcover_id`: The book's unique ID on Hardcover.
+    - `review_id`: The ID of the user's review record (for updates).
+    - `rating`, `progress`, `cover`, `privacy`.
+
+## 🛠️ Developer Workflows
+- **Build**: 
+  - Dev: `npm run dev` (watches `main.ts` and imports).
+  - Production: `npm run build`.
+- **Note on Circular Dependencies**: Avoid importing `HardcoverPlugin` from `main.ts` in sub-modules; import it from `src/plugin.ts` instead.
+
+## 💡 Tips for AI Agents
+- **Modularity**: Never add business logic to `main.ts`. New features should go into `src/plugin.ts` or a relevant sub-directory.
+- **Bases Schema**: The `.base` file is YAML-only. If changing its layout, ensure the YAML is valid for the Obsidian Bases plugin.
+- **Slate Parser**: When modifying formatting, update `src/parsers/slate-parser.ts`. Ensure `flushParagraph` and `flushText` are called correctly to maintain valid SlateJS nesting.
+- **Metadata**: Always use `app.fileManager.processFrontMatter` to update note properties safely.
 
 ---
-For questions or unclear sections, ask the user for clarification or examples from their workflow.
+For questions or unclear sections, ask the user for clarification or check the `hardcover_graphql_mutations` artifact in the brain folder.
