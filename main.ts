@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath, Modal, TextAreaComponent, ButtonComponent } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath, Modal, ButtonComponent } from 'obsidian';
 import { createReviewPost, fetchBooks, fetchUserInfo } from './hardcoverApi';
 
 // Remember to rename these classes and interfaces!
@@ -184,14 +184,14 @@ hardcover_id: ${book.id}
             }
         });
 
-        // Command: Create review post
+        // Command: Sync review post
         this.addCommand({
-            id: 'hardcover-create-review',
-            name: 'Create Hardcover Review Post',
+            id: 'hardcover-sync-review',
+            name: 'Sync Hardcover Review',
             callback: async () => {
                 const activeFile = this.app.workspace.getActiveFile();
                 if (!activeFile) {
-                    new Notice('No active file. Please open a book note to create a review.');
+                    new Notice('No active file. Please open a book note to sync a review.');
                     return;
                 }
                 
@@ -207,40 +207,54 @@ hardcover_id: ${book.id}
                 }
 
                 const bookId = cache.frontmatter.hardcover_id;
-                const bookTitle = cache.frontmatter.title || activeFile.basename;
                 const apiKey = this.settings.hardcoverApiKey;
+                const hasSpoilers = cache.frontmatter.contains_spoilers === true;
 
                 if (!apiKey) {
                     new Notice('Please set your Hardcover API key in settings.');
                     return;
                 }
 
-                new ReviewModal(this.app, String(bookId), bookTitle, apiKey, async (reviewText: string, hasSpoilers: boolean, id: string) => {
-                    if (!reviewText.trim()) {
-                        new Notice('Review text cannot be empty.');
-                        return;
-                    }
+                let content = await this.app.vault.read(activeFile);
+                const notesRegex = /(?:^|\n)## Notes\s*\n([\s\S]*?)(?:\n#[^#]\s|$)/;
+                const match = content.match(notesRegex);
+
+                if (!match || !match[1].trim()) {
+                    new Notice('No content found under "## Notes" to sync.');
+                    return;
+                }
+
+                const reviewText = match[1].trim();
+                const reviewId = cache.frontmatter.review_id;
+
+                new SyncModal(this.app, async (rating: number, spoilers: boolean, privacy: 'public' | 'private') => {
                     try {
-                        new Notice('Submitting review to Hardcover...');
-                        await createReviewPost(apiKey, id, reviewText, hasSpoilers);
+                        new Notice('Syncing review with Hardcover...');
+                        const result = await createReviewPost(apiKey, bookId, reviewText, spoilers, reviewId, rating, privacy);
                         
-                        // Save to markdown note
-                        if (activeFile && activeFile instanceof TFile) {
-                            let content = await this.app.vault.read(activeFile);
-                            const reviewSection = `\n\n### Review\n${reviewText}\n`;
-                            if (content.includes('## Notes')) {
-                                content = content.replace('## Notes', '## Notes' + reviewSection);
-                            } else {
-                                content += `\n## Notes${reviewSection}`;
-                            }
-                            await this.app.vault.modify(activeFile, content);
+                        const updatedReviewId = result.data?.update_user_book?.user_book?.id 
+                            || result.data?.insert_user_book?.user_book?.id
+                            || result.data?.update_user_book?.id
+                            || result.data?.insert_user_book?.id;
+
+                        if (updatedReviewId) {
+                            await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+                                frontmatter.review_id = updatedReviewId;
+                                frontmatter.rating = rating;
+                                frontmatter.contains_spoilers = spoilers;
+                                frontmatter.privacy = privacy;
+                            });
                         }
 
-                        new Notice('Successfully submitted review!');
+                        new Notice('Successfully synced review to Hardcover!');
                     } catch(e) {
                         console.error(e);
-                        new Notice('Failed: ' + (e instanceof Error ? e.message : 'Check console'));
+                        new Notice('Sync Failed: ' + (e instanceof Error ? e.message : 'Check console'));
                     }
+                }, {
+                    rating: cache.frontmatter.rating || 0,
+                    spoilers: hasSpoilers,
+                    privacy: cache.frontmatter.privacy || 'public'
                 }).open();
             }
         });
@@ -308,57 +322,70 @@ class HardcoverSettingTab extends PluginSettingTab {
                 }));
     }
 }
-
-export class ReviewModal extends Modal {
-    bookId: string;
-    bookTitle: string;
-    apiKey: string;
-    onSubmit: (reviewText: string, hasSpoilers: boolean, bookId: string) => void;
-
-    constructor(app: App, bookId: string, bookTitle: string, apiKey: string, onSubmit: (reviewText: string, hasSpoilers: boolean, bookId: string) => void) {
+class SyncModal extends Modal {
+    onSubmit: (rating: number, spoilers: boolean, privacy: 'public' | 'private') => void;
+    defaults: { rating: number, spoilers: boolean, privacy: 'public' | 'private' };
+    
+    constructor(app: App, onSubmit: (rating: number, spoilers: boolean, privacy: 'public' | 'private') => void, defaults: { rating: number, spoilers: boolean, privacy: 'public' | 'private' }) {
         super(app);
-        this.bookId = bookId;
-        this.bookTitle = bookTitle;
-        this.apiKey = apiKey;
         this.onSubmit = onSubmit;
+        this.defaults = defaults;
     }
 
     onOpen() {
-        const {contentEl} = this;
-        contentEl.createEl('h2', {text: `Write Review for: ${this.bookTitle}`});
+        const { contentEl } = this;
+        contentEl.createEl('h2', { text: 'Sync Review to Hardcover' });
 
-        const reviewContainer = contentEl.createDiv();
-        const reviewInput = new TextAreaComponent(reviewContainer);
-        reviewInput.setPlaceholder('Enter your review here...');
-        reviewInput.inputEl.style.width = '100%';
-        reviewInput.inputEl.style.height = '150px';
+        let rating = this.defaults.rating;
+        let spoilers = this.defaults.spoilers;
+        let privacy = this.defaults.privacy;
 
-        let hasSpoilers = false;
+        new Setting(contentEl)
+            .setName('Rating')
+            .setDesc('Score from 1 to 5 stars')
+            .addDropdown(dropdown => {
+                dropdown.addOptions({
+                    '0': 'No rating',
+                    '1': '1 Star',
+                    '2': '2 Stars',
+                    '3': '3 Stars',
+                    '4': '4 Stars',
+                    '5': '5 Stars'
+                });
+                dropdown.setValue(String(rating));
+                dropdown.onChange(value => { rating = Number(value); });
+            });
+
         new Setting(contentEl)
             .setName('Contains Spoilers')
-            .setDesc('Flag this review as containing spoilers for the book.')
-            .addToggle(toggle => toggle
-                .setValue(hasSpoilers)
-                .onChange(value => {
-                    hasSpoilers = value;
-                }));
+            .addToggle(toggle => {
+                toggle.setValue(spoilers);
+                toggle.onChange(value => { spoilers = value; });
+            });
 
-        const buttonContainer = contentEl.createDiv();
-        buttonContainer.style.marginTop = '10px';
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
+        new Setting(contentEl)
+            .setName('Privacy')
+            .addDropdown(dropdown => {
+                dropdown.addOptions({
+                    'public': 'Public (Review)',
+                    'private': 'Private (Notes)'
+                });
+                dropdown.setValue(privacy);
+                dropdown.onChange(value => { privacy = value as 'public' | 'private'; });
+            });
 
-        const submitButton = new ButtonComponent(buttonContainer);
-        submitButton.setButtonText('Submit');
-        submitButton.setCta();
-        submitButton.onClick(() => {
-            this.onSubmit(reviewInput.getValue(), hasSpoilers, this.bookId);
-            this.close();
-        });
+        new Setting(contentEl)
+            .addButton(btn => {
+                btn.setButtonText('Sync Now')
+                   .setCta()
+                   .onClick(() => {
+                        this.onSubmit(rating, spoilers, privacy);
+                        this.close();
+                   });
+            });
     }
 
     onClose() {
-        const {contentEl} = this;
-        contentEl.empty();
+        this.contentEl.empty();
     }
 }

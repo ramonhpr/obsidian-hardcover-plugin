@@ -12,7 +12,6 @@ export interface HardcoverBook {
         user_book_status?: { status: string };
         user_book_reads?: { progress_pages?: number }[];
     }[];
-    // Add more fields as needed
 }
 
 export interface HardcoverUser {
@@ -77,103 +76,159 @@ export async function fetchBooks(apiKey: string, userId: string): Promise<{ data
     return response.json;
 }
 
-export async function createReviewPost(apiKey: string, bookId: string, content: string, hasSpoilers: boolean): Promise<any> {
-    const slateChildren: any[] = [];
-    const lines = content.split('\n');
-    lines.forEach((line, index) => {
-        if (line.length > 0) {
-            slateChildren.push({ text: line, object: "text" });
+export async function createReviewPost(
+    apiKey: string, 
+    bookId: string, 
+    content: string, 
+    hasSpoilers: boolean, 
+    reviewId?: number, 
+    rating?: number, 
+    privacy: 'public' | 'private' = 'public'
+): Promise<any> {
+    const parseInlines = (text: string) => {
+        const inlines: any[] = [];
+        let currentText = "";
+        let isBold = false;
+        let isItalic = false;
+        let isSpoiler = false;
+        
+        const flushText = () => {
+            if (currentText.length > 0) {
+                const node: any = { text: currentText, object: "text" };
+                if (isBold) node.bold = true;
+                if (isItalic) node.italic = true;
+                if (isSpoiler) node.spoiler = true;
+                inlines.push(node);
+                currentText = "";
+            }
+        };
+        
+        for (let i = 0; i < text.length; i++) {
+            if (text.slice(i).startsWith('<spoiler>')) {
+                flushText();
+                isSpoiler = true;
+                i += 8;
+            } else if (text.slice(i).startsWith('</spoiler>')) {
+                flushText();
+                isSpoiler = false;
+                i += 9;
+            } else if (text.slice(i).startsWith('**')) {
+                flushText();
+                isBold = !isBold;
+                i += 1;
+            } else if (text.slice(i).startsWith('*')) {
+                flushText();
+                isItalic = !isItalic;
+            } else if (text.slice(i).startsWith('_')) {
+                flushText();
+                isItalic = !isItalic;
+            } else {
+                currentText += text[i];
+            }
         }
-        if (index < lines.length - 1) {
-            slateChildren.push({ data: {}, type: "br", object: "inline", children: [] });
+        flushText();
+        return inlines;
+    };
+
+    const documentChildren: any[] = [];
+    let currentParagraphChildren: any[] = [];
+
+    const flushParagraph = () => {
+        if (currentParagraphChildren.length > 0) {
+            documentChildren.push({
+                data: {},
+                type: "paragraph",
+                object: "block",
+                children: [...currentParagraphChildren]
+            });
+            currentParagraphChildren = [];
+        }
+    };
+
+    const lines = content.split('\n');
+    
+    lines.forEach((line) => {
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        
+        if (headingMatch) {
+            flushParagraph();
+            const level = headingMatch[1].length;
+            const text = headingMatch[2];
+            const types = ['heading-one', 'heading-two', 'heading-three', 'heading-four', 'heading-five', 'heading-six'];
+            
+            documentChildren.push({
+                data: {},
+                type: types[level - 1],
+                object: "block",
+                children: parseInlines(text)
+            });
+        } else if (line.trim() === '' || line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+            flushParagraph();
+            if (line.trim() !== '') {
+                currentParagraphChildren.push(...parseInlines(line));
+                flushParagraph();
+            }
+        } else {
+            if (currentParagraphChildren.length > 0) {
+                currentParagraphChildren.push({ data: {}, type: "br", object: "inline", children: [] });
+            }
+            currentParagraphChildren.push(...parseInlines(line));
         }
     });
+    flushParagraph();
 
     const reviewSlate = {
         document: {
             object: "document",
-            children: [
-                {
-                    data: {},
-                    type: "paragraph",
-                    object: "block",
-                    children: slateChildren
-                }
-            ]
+            children: documentChildren
         }
     };
 
-    // First check if the user_book already exists
-    const checkQuery = `
-      query CheckUserBook($bookId: Int!) {
-        user_books(where: {book_id: {_eq: $bookId}}) {
-          id
-        }
-      }
-    `;
-
-    const checkResponse = await requestUrl({
-        url: 'https://api.hardcover.app/v1/graphql',
-        method: 'POST',
-        headers: {
-            'Authorization': `${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            query: checkQuery,
-            variables: { bookId: Number(bookId) },
-            operationName: 'CheckUserBook'
-        })
-    });
-
-    let userBookId = null;
-    if (checkResponse.status === 200 && checkResponse.json.data?.user_books?.length > 0) {
-        userBookId = checkResponse.json.data.user_books[0].id;
-    }
-
-    let mutationQuery = '';
-    let variables: any = {
+    const userBookId = reviewId ? Number(reviewId) : null;
+    const variables: any = {
         bookId: Number(bookId),
-        reviewSlate,
-        hasSpoilers
+        reviewSlate: privacy === 'public' ? reviewSlate : null,
+        privateNotes: privacy === 'private' ? content : null,
+        rating: rating || null,
+        hasSpoilers: hasSpoilers
     };
 
+    let mutationQuery = "";
     if (userBookId) {
-        // Update existing record
         mutationQuery = `
-          mutation UpdateReview($id: Int!, $reviewSlate: jsonb, $hasSpoilers: Boolean) {
+          mutation UpdateReview($id: Int!, $reviewSlate: jsonb, $privateNotes: String, $rating: numeric, $hasSpoilers: Boolean) {
             update_user_book(
               id: $id,
               object: {
                 review_slate: $reviewSlate,
+                private_notes: $privateNotes,
+                rating: $rating,
                 review_has_spoilers: $hasSpoilers,
                 reviewed_at: "now()"
               }
             ) {
-              user_book {
-                id
-              }
+              user_book { id }
               id
               error
             }
           }
         `;
-        variables = { id: userBookId, reviewSlate, hasSpoilers };
+        variables.id = userBookId;
+        delete variables.bookId;
     } else {
-        // Insert new record
         mutationQuery = `
-          mutation InsertReview($bookId: Int!, $reviewSlate: jsonb, $hasSpoilers: Boolean) {
+          mutation InsertReview($bookId: Int!, $reviewSlate: jsonb, $privateNotes: String, $rating: numeric, $hasSpoilers: Boolean) {
             insert_user_book(
               object: {
                 book_id: $bookId,
                 review_slate: $reviewSlate,
+                private_notes: $privateNotes,
+                rating: $rating,
                 review_has_spoilers: $hasSpoilers,
                 reviewed_at: "now()"
               }
             ) {
-              user_book {
-                id
-              }
+              user_book { id }
               id
               error
             }
@@ -200,6 +255,6 @@ export async function createReviewPost(apiKey: string, bookId: string, content: 
     if (result.errors && result.errors.length > 0) {
         throw new Error('GraphQL Error: ' + result.errors[0].message);
     }
-    console.log(result);
+    console.debug(result);
     return result;
 }
