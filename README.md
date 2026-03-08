@@ -48,6 +48,7 @@ src/plugin.ts        # Core plugin orchestration
 
 ## 📝 TODO / Future Work
 
+- [ ] Add option to sync books periodically from Hardcover to Obsidian.
 - [ ] Support for syncing highlights from Hardcover back to Obsidian.
 - [ ] Direct status updates (Read/Reading) from Obsidian.
 - [ ] Support for custom metadata fields.
