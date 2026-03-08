@@ -1,5 +1,5 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath } from 'obsidian';
-import { fetchBooks, fetchUserInfo } from './hardcoverApi';
+import { App, Notice, Plugin, PluginSettingTab, Setting, TFile, normalizePath, Modal, TextAreaComponent, ButtonComponent } from 'obsidian';
+import { createReviewPost, fetchBooks, fetchUserInfo } from './hardcoverApi';
 
 // Remember to rename these classes and interfaces!
 
@@ -189,8 +189,59 @@ hardcover_id: ${book.id}
             id: 'hardcover-create-review',
             name: 'Create Hardcover Review Post',
             callback: async () => {
-                // This is a placeholder. You would add logic to select a book and get note content.
-                new Notice('Feature not implemented: select a book and create a review post.');
+                const activeFile = this.app.workspace.getActiveFile();
+                if (!activeFile) {
+                    new Notice('No active file. Please open a book note to create a review.');
+                    return;
+                }
+                
+                if (activeFile.extension !== 'md') {
+                    new Notice('Active file must be a markdown note.');
+                    return;
+                }
+
+                const cache = this.app.metadataCache.getFileCache(activeFile);
+                if (!cache || !cache.frontmatter || !cache.frontmatter.hardcover_id) {
+                    new Notice('Active note does not have a "hardcover_id" in its frontmatter.');
+                    return;
+                }
+
+                const bookId = cache.frontmatter.hardcover_id;
+                const bookTitle = cache.frontmatter.title || activeFile.basename;
+                const apiKey = this.settings.hardcoverApiKey;
+
+                if (!apiKey) {
+                    new Notice('Please set your Hardcover API key in settings.');
+                    return;
+                }
+
+                new ReviewModal(this.app, String(bookId), bookTitle, apiKey, async (reviewText: string, hasSpoilers: boolean, id: string) => {
+                    if (!reviewText.trim()) {
+                        new Notice('Review text cannot be empty.');
+                        return;
+                    }
+                    try {
+                        new Notice('Submitting review to Hardcover...');
+                        await createReviewPost(apiKey, id, reviewText, hasSpoilers);
+                        
+                        // Save to markdown note
+                        if (activeFile && activeFile instanceof TFile) {
+                            let content = await this.app.vault.read(activeFile);
+                            const reviewSection = `\n\n### Review\n${reviewText}\n`;
+                            if (content.includes('## Notes')) {
+                                content = content.replace('## Notes', '## Notes' + reviewSection);
+                            } else {
+                                content += `\n## Notes${reviewSection}`;
+                            }
+                            await this.app.vault.modify(activeFile, content);
+                        }
+
+                        new Notice('Successfully submitted review!');
+                    } catch(e) {
+                        console.error(e);
+                        new Notice('Failed: ' + (e instanceof Error ? e.message : 'Check console'));
+                    }
+                }).open();
             }
         });
 
@@ -255,5 +306,59 @@ class HardcoverSettingTab extends PluginSettingTab {
                     this.plugin.settings.bookNotesFolder = value;
                     await this.plugin.saveSettings();
                 }));
+    }
+}
+
+export class ReviewModal extends Modal {
+    bookId: string;
+    bookTitle: string;
+    apiKey: string;
+    onSubmit: (reviewText: string, hasSpoilers: boolean, bookId: string) => void;
+
+    constructor(app: App, bookId: string, bookTitle: string, apiKey: string, onSubmit: (reviewText: string, hasSpoilers: boolean, bookId: string) => void) {
+        super(app);
+        this.bookId = bookId;
+        this.bookTitle = bookTitle;
+        this.apiKey = apiKey;
+        this.onSubmit = onSubmit;
+    }
+
+    onOpen() {
+        const {contentEl} = this;
+        contentEl.createEl('h2', {text: `Write Review for: ${this.bookTitle}`});
+
+        const reviewContainer = contentEl.createDiv();
+        const reviewInput = new TextAreaComponent(reviewContainer);
+        reviewInput.setPlaceholder('Enter your review here...');
+        reviewInput.inputEl.style.width = '100%';
+        reviewInput.inputEl.style.height = '150px';
+
+        let hasSpoilers = false;
+        new Setting(contentEl)
+            .setName('Contains Spoilers')
+            .setDesc('Flag this review as containing spoilers for the book.')
+            .addToggle(toggle => toggle
+                .setValue(hasSpoilers)
+                .onChange(value => {
+                    hasSpoilers = value;
+                }));
+
+        const buttonContainer = contentEl.createDiv();
+        buttonContainer.style.marginTop = '10px';
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+
+        const submitButton = new ButtonComponent(buttonContainer);
+        submitButton.setButtonText('Submit');
+        submitButton.setCta();
+        submitButton.onClick(() => {
+            this.onSubmit(reviewInput.getValue(), hasSpoilers, this.bookId);
+            this.close();
+        });
+    }
+
+    onClose() {
+        const {contentEl} = this;
+        contentEl.empty();
     }
 }
