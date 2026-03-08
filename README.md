@@ -1,55 +1,57 @@
 # Hardcover Obsidian Plugin
 
-This is an unofficial plugin for Obsidian that integrates with [Hardcover](https://hardcover.app), allowing you to manage and view your Hardcover book collection directly in your vault.
+This is an unofficial plugin for Obsidian that integrates with [Hardcover](https://hardcover.app), allowing you to manage and sync your book collection, notes, and reviews directly from your vault.
 
-## Features
+## 🚀 Features
 
-- Adds a ribbon icon to quickly access plugin features.
-- Adds a status bar item indicating plugin readiness.
-- Adds a settings tab to configure your Hardcover API key, bookshelf index file, and book notes folder.
-- Fetches your Hardcover book collection and displays it in a markdown table in a single index note (default: `bookshelf/index.md`).
-- Each book is shown with:
-  - Cover image (uniform size)
-  - Title (links to a dedicated book note)
-  - Author (as a wiki link)
-  - Number of pages
-  - Reading status (e.g., "Read", "Reading", "Want to Read")
-- Prevents duplicate book entries in the index note when fetching multiple times.
-- For each book, creates a dedicated note (in a configurable folder, default: `bookshelf/books`):
-  - Note contains YAML frontmatter with author, pages, and status
-  - Note contains a single H1 heading with the book title
-  - Frontmatter and heading are updated if the note already exists (no duplication)
-- All folders and files are created automatically if they do not exist.
-- Book notes and the index table stay in sync with your Hardcover collection.
+- **Bookshelf Sync**: Fetches your entire Hardcover collection and generates a **native `.base` file** in Obsidian, providing a powerful database view with covers, progress, and status.
+- **Automatic Book Notes**: Creates individual notes for each book with YAML frontmatter (ID, title, author, pages, status).
+- **Review Sync (New!)**: 
+    - Extracts your review from under the `## Notes` heading in your book notes.
+    - **Smart Parser**: Converts Obsidian Markdown (Bold, Italic, Headings h1-h6, Lists) into Hardcover's native SlateJS format.
+    - **Spoiler Support**: Use `<spoiler>text</spoiler>` tags to hide sensitive parts on the Hardcover website.
+- **Sync Control Modal**: Before sending, a confirmation modal lets you set:
+    - **Rating**: 1 to 5 stars.
+    - **Spoilers**: Toggle if the review contains spoilers.
+    - **Privacy**: Choose between **Public (Review)** or **Private (Notes)**.
+- **Metadata Persistence**: The plugin saves `review_id`, `rating`, and `privacy` back to your note's frontmatter for future syncs.
+- **Settings**: Flexible configuration for your API Key, bookshelf path, and book notes folder.
 
-## How to Use
+## 📂 Project Structure
 
-1. Install the plugin in your Obsidian vault.
-2. Open the settings tab for "Hardcover Obsidian Plugin".
-3. Enter your Hardcover API key.
-4. Optionally, set the bookshelf index file path and the folder for book notes.
-5. Use the command palette to run "Query Hardcover Book Collection".
-6. Your collection will be fetched and organized in your vault.
+The project follows a modular architecture for better maintainability:
 
-## Development
+```text
+src/
+├── api/             # GraphQL communication with Hardcover API
+├── parsers/         # Markdown to SlateJS conversion logic
+├── ui/              # Obsidian Modals and interface components
+├── settings/        # Plugin settings tab management
+└── types/           # TypeScript interfaces and constants
+main.ts              # Entry point
+src/plugin.ts        # Core plugin orchestration
+```
 
-- Written in TypeScript and uses the latest Obsidian API.
-- See `main.ts` and `hardcoverApi.ts` for implementation details.
+## 🛠️ How to Use
 
-## Future Work
+1. **Setup**: Enter your Hardcover API key in the plugin settings.
+2. **Import**: Run the `Fetch Hardcover Bookshelf` command to populate your vault.
+3. **Write**: In a book note, write your thoughts under a `## Notes` heading. Use standard Markdown or `<spoiler>` tags.
+4. **Sync**: Run the `Sync Hardcover Review` command.
+5. **Confirm**: Set your rating and privacy in the modal and click **Sync Now**.
 
-The following features are planned or suggested for future releases:
+## 🏗️ Development
 
-- Allow sorting and filtering of the index table by title, author, status, or other fields.
-- Allow sending reviews directly to Hardcover from within Obsidian.
-- Add support for syncing highlights and notes from Hardcover to Obsidian book notes.
-- Enable updating book status (e.g., mark as read, currently reading) directly from Obsidian.
-- Add support for custom table columns and user-defined metadata fields.
-- Provide a command to refresh or re-sync the collection on a schedule.
-- Add integration with other book-related plugins or APIs (e.g., Goodreads, Open Library).
-- Support for bulk editing or tagging books within the index table.
-- Add a dashboard view for reading statistics and progress tracking.
-- Improve error handling and user feedback for API/network issues.
+- **Language**: TypeScript
+- **Tooling**: Built with `esbuild` for fast bundling.
+- **API**: Uses the official Hardcover GraphQL API.
+
+## 📝 TODO / Future Work
+
+- [ ] Support for syncing highlights from Hardcover back to Obsidian.
+- [ ] Direct status updates (Read/Reading) from Obsidian.
+- [ ] Support for custom metadata fields.
+- [ ] Improved error handling for network edge cases.
 
 ---
 
